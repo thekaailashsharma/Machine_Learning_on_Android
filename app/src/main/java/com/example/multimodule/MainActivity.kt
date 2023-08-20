@@ -2,17 +2,23 @@ package com.example.multimodule
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.ThumbnailUtils
+import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -64,43 +71,88 @@ fun CaptureImage() {
     var imageBitmap by remember {
         mutableStateOf<ImageBitmap?>(null)
     }
+    var bitmap by remember {
+        mutableStateOf<Bitmap?>(null)
+    }
+    var isCamera by remember {
+        mutableStateOf(false)
+    }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview(),
         onResult = {
             imageBitmap = it?.asImageBitmap()
         }
     )
+
+    var selectedImageUri by remember {
+        mutableStateOf<Uri?>(null)
+    }
+
+    val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = {
+                uri -> selectedImageUri = uri
+                if (uri != null) {
+                    bitmap = uriToBitmap(uri, context)
+                }
+
+
+        }
+    )
+    var list by remember {
+        mutableStateOf<List<Map<String, Any>>>(listOf())
+    }
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Button(onClick = {
-            launcher.launch()
-        }) {
-            Text(text = "Capture Image", color = MaterialTheme.colorScheme.onPrimary)
-        }
-        if (imageBitmap != null) {
-            Button(onClick = {
-                val imageSize = 200
-                var image = imageBitmap?.asAndroidBitmap()
-                if (image != null) {
-                    val dimension = min(image.width, image.height)
-                    val newImageBitmap =
-                        ThumbnailUtils.extractThumbnail(image, dimension, dimension)
-                    image = Bitmap.createScaledBitmap(
-                        newImageBitmap,
-                        imageSize,
-                        imageSize,
-                        false
+        if (list.isNotEmpty()){
+            LazyColumn(){
+                items(list){
+                    Text(
+                        text = "${it.values}",
+                        color = Color.White
                     )
-                    classifyPart3(image, context = context)
                 }
-            }) {
-                Text(
-                    text = "Hello ML",
-                    color = MaterialTheme.colorScheme.onPrimary
+            }
+        } else {
+            Button(onClick = {
+                singlePhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
+                isCamera = false
+            }) {
+                Text(text = "Capture Image", color = MaterialTheme.colorScheme.onPrimary)
+            }
+            Button(onClick = {
+                launcher.launch()
+                isCamera = true
+            }) {
+                Text(text = "Take Image", color = MaterialTheme.colorScheme.onPrimary)
+            }
+            if (bitmap != null || imageBitmap != null) {
+                Button(onClick = {
+                    val imageSize = 200
+                    var image = if (isCamera) imageBitmap?.asAndroidBitmap() else bitmap
+                    if (image != null) {
+                        val dimension = min(image.width, image.height)
+                        val newImageBitmap =
+                            ThumbnailUtils.extractThumbnail(image, dimension, dimension)
+                        image = Bitmap.createScaledBitmap(
+                            newImageBitmap,
+                            imageSize,
+                            imageSize,
+                            false
+                        )
+                        list = classifyPart3(image, context = context)
+                    }
+                }) {
+                    Text(
+                        text = "Hello ML",
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             }
         }
     }
@@ -191,7 +243,7 @@ fun extractPredictions(outputFeature0: TensorBuffer): List<Map<String, Any>> {
     }
 }
 
-fun classifyPart3(bitmap: Bitmap, context: Context) {
+fun classifyPart3(bitmap: Bitmap, context: Context): List<Map<String, Any>> {
     val model = Finale.newInstance(context)
 
 // Creates inputs for reference.
@@ -221,13 +273,64 @@ fun classifyPart3(bitmap: Bitmap, context: Context) {
     // Post-processor which dequantize the result
     // Post-processor which dequantize the result
     val labelsList = listOf(
-        "Tomato with Bacterial Spot", "Grape with Esca (Black Measles)", "Grape with Black Rot",
-        "Strawberry with Leaf Scorch", "Tomato with Late Blight"
+        "Apple___Apple_scab",
+        "Apple___Black_rot",
+        "Apple___Cedar_apple_rust",
+        "Apple___healthy",
+        "Blueberry___healthy",
+        "Cherry_(including_sour)___Powdery_mildew",
+        "Cherry_(including_sour)___healthy",
+        "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
+        "Corn_(maize)___Common_rust_",
+        "Corn_(maize)___Northern_Leaf_Blight",
+        "Corn_(maize)___healthy",
+        "Grape___Black_rot",
+        "Grape___Esca_(Black_Measles)",
+        "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)",
+        "Grape___healthy",
+        "Orange___Haunglongbing_(Citrus_greening)",
+        "Peach___Bacterial_spot",
+        "Peach___healthy",
+        "Pepper,_bell___Bacterial_spot",
+        "Pepper,_bell___healthy",
+        "Potato___Early_blight",
+        "Potato___Late_blight",
+        "Potato___healthy",
+        "Raspberry___healthy",
+        "Soybean___healthy",
+        "Squash___Powdery_mildew",
+        "Strawberry___Leaf_scorch",
+        "Strawberry___healthy",
+        "Tomato___Bacterial_spot",
+        "Tomato___Early_blight",
+        "Tomato___Late_blight",
+        "Tomato___Leaf_Mold",
+        "Tomato___Septoria_leaf_spot",
+        "Tomato___Spider_mites Two-spotted_spider_mite",
+        "Tomato___Target_Spot",
+        "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+        "Tomato___Tomato_mosaic_virus",
+        "Tomato___healthy"
     )
-    Log.i("CMON", "Ehlo ${convertToLabelScorePairs(outputFeature0.floatArray, labelsList)}")
+
+    val output = mapScoresToLabels(outputFeature0.floatArray, labels = labelsList)
+    output.forEachIndexed { index, value ->
+        Log.i("Output", "$index : ${value}")
+    }
 // Releases model resources if no longer used.
     model.close()
+    return output
 
+}
+
+fun mapScoresToLabels(scores: FloatArray, labels: List<String>): List<Map<String, Any>> {
+    val labelScoreList = scores.mapIndexed { index, score ->
+        mapOf("score" to score, "label" to labels[index])
+    }
+
+    val sortedLabels = labelScoreList.sortedByDescending { it["score"] as Float }
+
+    return sortedLabels
 }
 
 fun convertToLabelScorePairs(
@@ -248,6 +351,22 @@ fun convertToLabelScorePairs(
 
     return labelScorePairs
 }
+
+
+private fun uriToBitmap(selectedFileUri: Uri, context: Context): Bitmap? {
+    try {
+        val parcelFileDescriptor: ParcelFileDescriptor? =
+            context.contentResolver.openFileDescriptor(selectedFileUri, "r")
+        val fileDescriptor = parcelFileDescriptor?.fileDescriptor
+        val image = BitmapFactory.decodeFileDescriptor(fileDescriptor)
+        parcelFileDescriptor?.close()
+        return image
+    } catch (e: IOException) {
+        e.printStackTrace()
+    }
+    return null
+}
+
 
 
 
